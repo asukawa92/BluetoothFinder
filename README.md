@@ -27,4 +27,3 @@ Bluetooth Connect нужен для событий подключения, Bluet
 APK: `app/build/outputs/apk/debug/app-debug.apk`. Установка: `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
 На Windows JUnit worker может не находить классы, если путь проекта содержит кириллицу. В таком случае запустите тесты через путь без кириллицы (например, junction на каталог проекта); `build.ps1` поддерживает такой путь.
-
