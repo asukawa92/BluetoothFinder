@@ -43,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
@@ -104,6 +106,9 @@ class MainActivity : ComponentActivity() {
             var locationMessage by remember { mutableStateOf<String?>(null) }
             var selectedEvent by remember { mutableStateOf<Disconnect?>(null) }
             var pendingEvent by remember { mutableStateOf<Disconnect?>(null) }
+            var historyLimit by remember { mutableIntStateOf(HistoryRetention.get(this)) }
+            var historyLimitDialog by remember { mutableStateOf(false) }
+            var historyLimitInput by remember { mutableStateOf(historyLimit.toString()) }
             var tab by rememberSaveable { mutableIntStateOf(0) }
             val scanner = remember { SignalScanner(this) }
             var guidedDevice by remember { mutableStateOf<PairedDevice?>(null) }
@@ -125,6 +130,7 @@ class MainActivity : ComponentActivity() {
             }
             val listState = rememberLazyListState()
             val history by FinderDb.get(this).dao().observe().collectAsStateWithLifecycle(emptyList())
+            LaunchedEffect(historyLimit) { FinderDb.get(this@MainActivity).dao().prune(historyLimit) }
             LaunchedEffect(resumeTick.intValue) {
                 if (resumeTick.intValue > 0) { devices = paired(); selected = Tracked.get(this@MainActivity); updateTracking() }
             }
@@ -138,6 +144,34 @@ class MainActivity : ComponentActivity() {
             }
             val palette = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF236A75), secondary = androidx.compose.ui.graphics.Color(0xFF336D54), surface = androidx.compose.ui.graphics.Color(0xFFF6F8F7))
             MaterialTheme(colorScheme = palette) {
+                if (historyLimitDialog) {
+                    val newLimit = historyLimitInput.toIntOrNull()?.takeIf { it in 1..10_000 }
+                    AlertDialog(
+                        onDismissRequest = { historyLimitDialog = false },
+                        title = { Text("Сколько записей хранить") },
+                        text = {
+                            Column {
+                                OutlinedTextField(
+                                    value = historyLimitInput,
+                                    onValueChange = { historyLimitInput = it.filter(Char::isDigit).take(5) },
+                                    label = { Text("Количество от 1 до 10 000") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text("Более старые записи будут удалены из базы.", style = MaterialTheme.typography.bodySmall)
+                            }
+                        },
+                        confirmButton = { TextButton(onClick = {
+                            newLimit?.let {
+                                HistoryRetention.set(this@MainActivity, it)
+                                historyLimit = it
+                                historyLimitDialog = false
+                            }
+                        }, enabled = newLimit != null) { Text("Сохранить") } },
+                        dismissButton = { TextButton(onClick = { historyLimitDialog = false }) { Text("Отмена") } }
+                    )
+                }
                 pendingEvent?.let { item ->
                     val lat = item.connectionLatitude ?: item.latitude
                     val lon = item.connectionLongitude ?: item.longitude
@@ -286,7 +320,14 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        item { SectionTitle("История отключений") }
+                        item {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                SectionTitle("История отключений")
+                                TextButton(onClick = { historyLimitInput = historyLimit.toString(); historyLimitDialog = true }) {
+                                    Text("Последние $historyLimit")
+                                }
+                            }
+                        }
                         if (history.isEmpty()) item { Text("Отключений пока нет. Когда связь с выбранным устройством оборвётся, запись появится здесь.") }
                         items(history, key = { it.id }) { item -> Card(modifier = Modifier.fillMaxWidth().clickable { pendingEvent = item }, colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp)) {
                             Column(Modifier.padding(16.dp)) {

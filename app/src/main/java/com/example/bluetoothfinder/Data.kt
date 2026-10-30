@@ -24,8 +24,10 @@ data class Disconnect(
 )
 
 @Dao interface DisconnectDao {
-    @Query("SELECT * FROM disconnects ORDER BY time DESC") fun observe(): Flow<List<Disconnect>>
+    @Query("SELECT * FROM disconnects ORDER BY time DESC, id DESC") fun observe(): Flow<List<Disconnect>>
     @Insert suspend fun insert(item: Disconnect)
+    @Query("DELETE FROM disconnects WHERE id NOT IN (SELECT id FROM disconnects ORDER BY time DESC, id DESC LIMIT :keep)")
+    suspend fun prune(keep: Int)
 }
 
 @Database(entities = [Disconnect::class], version = 2, exportSchema = false)
@@ -52,6 +54,17 @@ object Tracked {
     fun get(context: Context): Set<String> = context.getSharedPreferences("tracked", 0).getStringSet(KEY, emptySet())!!.toSet()
     fun set(context: Context, addresses: Set<String>) {
         context.getSharedPreferences("tracked", 0).edit().putStringSet(KEY, addresses).apply()
+    }
+}
+
+object HistoryRetention {
+    private const val DEFAULT_COUNT = 5
+    private const val MAX_COUNT = 10_000
+    private fun prefs(context: Context) = context.getSharedPreferences("history_retention", 0)
+    fun get(context: Context): Int = prefs(context).getInt("count", DEFAULT_COUNT).coerceIn(1, MAX_COUNT)
+    fun set(context: Context, count: Int) {
+        require(count in 1..MAX_COUNT)
+        prefs(context).edit().putInt("count", count).apply()
     }
 }
 

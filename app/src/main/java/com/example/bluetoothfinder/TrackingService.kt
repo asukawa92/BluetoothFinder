@@ -1,5 +1,7 @@
 package com.example.bluetoothfinder
 
+import androidx.room.withTransaction
+
 import android.Manifest
 import android.app.*
 import android.bluetooth.BluetoothDevice
@@ -170,10 +172,15 @@ class TrackingService : Service() {
         val name = try {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED || Build.VERSION.SDK_INT < 31) device.name ?: device.address else device.address
         } catch (_: SecurityException) { device.address }
-        FinderDb.get(this).dao().insert(Disconnect(address = device.address, name = name, time = time,
-            latitude = location?.latitude, longitude = location?.longitude, accuracy = location?.accuracy, locationTime = location?.time,
-            connectionLatitude = connection?.latitude, connectionLongitude = connection?.longitude,
-            connectionAccuracy = connection?.accuracy, connectionTime = connection?.time))
+        val db = FinderDb.get(this)
+        val keep = HistoryRetention.get(this)
+        db.withTransaction {
+            db.dao().insert(Disconnect(address = device.address, name = name, time = time,
+                latitude = location?.latitude, longitude = location?.longitude, accuracy = location?.accuracy, locationTime = location?.time,
+                connectionLatitude = connection?.latitude, connectionLongitude = connection?.longitude,
+                connectionAccuracy = connection?.accuracy, connectionTime = connection?.time))
+            db.dao().prune(keep)
+        }
         LastConnectionLocation.clear(this, device.address)
     }
 
